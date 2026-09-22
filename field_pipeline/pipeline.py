@@ -5,6 +5,8 @@ from shapely.geometry import Polygon
 
 from field_pipeline.config import PipelineConfig
 from field_pipeline.detectors import FieldDetector
+from field_pipeline.exceptions import PipelineError
+
 
 class FieldBoundaryAnalyzer:
     def __init__(self, config: PipelineConfig, detector: FieldDetector) -> None:
@@ -17,29 +19,38 @@ class FieldBoundaryAnalyzer:
         cap = cv2.VideoCapture(video_path)
 
         if not cap.isOpened():
-            print("Error: Could not open video stream.")
-            return
+            raise PipelineError(f"Could not open video stream: {video_path}")
+
+        # Read the frame dimensions from the video itself, not from
+        # config. The outer boundary polygon depends on this and only
+        # needs to be built once per run.
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        outer_boundary = Polygon(
+            [(0, 0), (width, 0), (width, height), (0, height)]
+        )
 
         frame_count = 0
         detected_polygons = []
 
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
 
-            frame_count += 1
+                frame_count += 1
 
-            poly = self.detector.detect(frame)
+                poly = self.detector.detect(frame)
 
-            if poly is not None:
-                outer_boundary = Polygon([(0, 0), (1280, 0), (1280, 720), (0, 720)])
-                intersection_area = poly.intersection(outer_boundary).area
-                detected_polygons.append((frame_count, poly, intersection_area))
+                if poly is not None:
+                    intersection_area = poly.intersection(outer_boundary).area
+                    detected_polygons.append((frame_count, poly, intersection_area))
 
-            # Simulate heavy per-frame processing latency
-            time.sleep(0.005)
+                # Simulate heavy per-frame processing latency
+                time.sleep(0.005)
+        finally:
+            cap.release()
 
-        cap.release()
         print(f"Processed {frame_count} frames. Found {len(detected_polygons)} boundaries.")
         return detected_polygons
