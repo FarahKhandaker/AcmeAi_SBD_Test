@@ -9,3 +9,4 @@ venv/
 .idea/
 NOTES.md
 ASSIGNMENT.md
+config.local.yaml
