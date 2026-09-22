@@ -1,3 +1,4 @@
+import logging
 import time
 
 import cv2
@@ -8,6 +9,8 @@ from field_pipeline.detectors import FieldDetector
 from field_pipeline.exceptions import PipelineError
 from field_pipeline.frame_filter import is_frame_worth_analyzing
 
+log = logging.getLogger("field_pipeline.pipeline")
+
 
 class FieldBoundaryAnalyzer:
     def __init__(self, config: PipelineConfig, detector: FieldDetector) -> None:
@@ -16,7 +19,10 @@ class FieldBoundaryAnalyzer:
         self.sport = config.field_detector.sport
 
     def process_video(self, video_path: str):
-        print(f"Starting processing for video: {video_path}")
+        log.info(
+            "video_open",
+            extra={"event": "video_open", "video_path": video_path},
+        )
         cap = cv2.VideoCapture(video_path)
 
         if not cap.isOpened():
@@ -50,14 +56,17 @@ class FieldBoundaryAnalyzer:
                     intersection_area = poly.intersection(outer_boundary).area
                     detected_polygons.append((frame_count, poly, intersection_area))
 
-                # Simulate heavy per-frame processing latency
                 time.sleep(0.005)
         finally:
             cap.release()
 
-        print(
-            f"Processed {frame_count} frames "
-            f"(skipped {skipped_count} as non-pitch). "
-            f"Found {len(detected_polygons)} boundaries."
+        log.info(
+            "video_processed",
+            extra={
+                "event": "video_processed",
+                "frames_read": frame_count,
+                "frames_skipped": skipped_count,
+                "boundaries_found": len(detected_polygons),
+            },
         )
         return detected_polygons
