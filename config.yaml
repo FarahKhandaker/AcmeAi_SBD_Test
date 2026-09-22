@@ -1,0 +1,14 @@
+video_path: synthetic_pitch_feed.mp4
+target_fps: 30
+run_id: local-dev-run-001
+log_level: INFO
+
+field_detector:
+  type: mask_color_v1
+  sport: football
+  min_area: 1000
+
+reporter:
+  base_url: http://localhost:5000
+  timeout_seconds: 5.0
+  max_attempts: 3
