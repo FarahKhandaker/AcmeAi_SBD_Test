@@ -1,8 +1,11 @@
+"""Entry point for the pitch-boundary pipeline."""
+
 import argparse
 import sys
 from pathlib import Path
 
 from field_pipeline.config_loader import load_config
+from field_pipeline.detectors import build_detector
 from field_pipeline.exceptions import (
     ConfigError,
     DetectorError,
@@ -24,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--generate-video",
         action="store_true",
-        help="Generate the synthetic video feed before running (useful for local dev).",
+        help="Generate the synthetic video feed before running.",
     )
     return parser.parse_args()
 
@@ -42,7 +45,8 @@ def main() -> int:
         generate_synthetic_video(str(config.video_path))
 
     try:
-        analyzer = FieldBoundaryAnalyzer(config)
+        detector = build_detector(config.field_detector)
+        analyzer = FieldBoundaryAnalyzer(config, detector)
         results = analyzer.process_video(str(config.video_path))
         print(f"Pipeline finished with {len(results) if results else 0} results.")
         return 0

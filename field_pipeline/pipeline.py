@@ -1,16 +1,16 @@
 import time
 
 import cv2
-import numpy as np
 from shapely.geometry import Polygon
 
 from field_pipeline.config import PipelineConfig
+from field_pipeline.detectors import FieldDetector
 
 class FieldBoundaryAnalyzer:
-    def __init__(self, config: PipelineConfig):
+    def __init__(self, config: PipelineConfig, detector: FieldDetector) -> None:
         self.config = config
+        self.detector = detector
         self.sport = config.field_detector.sport
-        self.min_area = config.field_detector.min_area
 
     def process_video(self, video_path: str):
         print(f"Starting processing for video: {video_path}")
@@ -30,10 +30,9 @@ class FieldBoundaryAnalyzer:
 
             frame_count += 1
 
-            mask = self._extract_mask(frame)
-            poly = self._derive_polygon_from_mask(mask)
+            poly = self.detector.detect(frame)
 
-            if poly and poly.is_valid:
+            if poly is not None:
                 outer_boundary = Polygon([(0, 0), (1280, 0), (1280, 720), (0, 720)])
                 intersection_area = poly.intersection(outer_boundary).area
                 detected_polygons.append((frame_count, poly, intersection_area))
@@ -44,22 +43,3 @@ class FieldBoundaryAnalyzer:
         cap.release()
         print(f"Processed {frame_count} frames. Found {len(detected_polygons)} boundaries.")
         return detected_polygons
-
-    def _extract_mask(self, frame: np.ndarray) -> np.ndarray:
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        lower_green = np.array([35, 40, 40])
-        upper_green = np.array([85, 255, 255])
-        return cv2.inRange(hsv, lower_green, upper_green)
-
-    def _derive_polygon_from_mask(self, mask: np.ndarray):
-        try:
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            if contours:
-                largest = max(contours, key=cv2.contourArea)
-                if cv2.contourArea(largest) > self.min_area:
-                    pts = largest.reshape(-1, 2)
-                    if len(pts) >= 3:
-                        return Polygon(pts)
-        except Exception:
-            pass
-        return None
