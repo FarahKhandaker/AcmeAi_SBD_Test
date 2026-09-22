@@ -6,6 +6,7 @@ from shapely.geometry import Polygon
 from field_pipeline.config import PipelineConfig
 from field_pipeline.detectors import FieldDetector
 from field_pipeline.exceptions import PipelineError
+from field_pipeline.frame_filter import is_frame_worth_analyzing
 
 
 class FieldBoundaryAnalyzer:
@@ -21,9 +22,6 @@ class FieldBoundaryAnalyzer:
         if not cap.isOpened():
             raise PipelineError(f"Could not open video stream: {video_path}")
 
-        # Read the frame dimensions from the video itself, not from
-        # config. The outer boundary polygon depends on this and only
-        # needs to be built once per run.
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         outer_boundary = Polygon(
@@ -31,6 +29,7 @@ class FieldBoundaryAnalyzer:
         )
 
         frame_count = 0
+        skipped_count = 0
         detected_polygons = []
 
         try:
@@ -40,6 +39,10 @@ class FieldBoundaryAnalyzer:
                     break
 
                 frame_count += 1
+
+                if not is_frame_worth_analyzing(frame):
+                    skipped_count += 1
+                    continue
 
                 poly = self.detector.detect(frame)
 
@@ -52,5 +55,9 @@ class FieldBoundaryAnalyzer:
         finally:
             cap.release()
 
-        print(f"Processed {frame_count} frames. Found {len(detected_polygons)} boundaries.")
+        print(
+            f"Processed {frame_count} frames "
+            f"(skipped {skipped_count} as non-pitch). "
+            f"Found {len(detected_polygons)} boundaries."
+        )
         return detected_polygons
