@@ -6,8 +6,9 @@ from shapely.geometry import Polygon
 
 from field_pipeline.config import PipelineConfig
 from field_pipeline.detectors import FieldDetector
-from field_pipeline.exceptions import PipelineError
+from field_pipeline.exceptions import DetectorError, PipelineError
 from field_pipeline.frame_filter import is_frame_worth_analyzing
+from field_pipeline.summary import RunSummary
 
 log = logging.getLogger("field_pipeline.pipeline")
 
@@ -18,7 +19,7 @@ class FieldBoundaryAnalyzer:
         self.detector = detector
         self.sport = config.field_detector.sport
 
-    def process_video(self, video_path: str):
+    def process_video(self, video_path: str) -> RunSummary:
         log.info(
             "video_open",
             extra={"event": "video_open", "video_path": video_path},
@@ -36,7 +37,8 @@ class FieldBoundaryAnalyzer:
 
         frame_count = 0
         skipped_count = 0
-        detected_polygons = []
+        recoverable_error_count = 0
+        intersection_areas: list[float] = []
 
         try:
             while True:
@@ -50,23 +52,46 @@ class FieldBoundaryAnalyzer:
                     skipped_count += 1
                     continue
 
-                poly = self.detector.detect(frame)
+                try:
+                    poly = self.detector.detect(frame)
+                except DetectorError:
+                    raise
+                except Exception as exc:
+                    recoverable_error_count += 1
+                    log.warning(
+                        "frame_detection_failed",
+                        extra={
+                            "event": "frame_detection_failed",
+                            "frame_index": frame_count,
+                            "error_type": type(exc).__name__,
+                            "error": str(exc),
+                        },
+                    )
+                    continue
 
                 if poly is not None:
-                    intersection_area = poly.intersection(outer_boundary).area
-                    detected_polygons.append((frame_count, poly, intersection_area))
+                    intersection_areas.append(poly.intersection(outer_boundary).area)
 
                 time.sleep(0.005)
         finally:
             cap.release()
 
+        mean_area = (
+            sum(intersection_areas) / len(intersection_areas)
+            if intersection_areas
+            else 0.0
+        )
+
+        summary = RunSummary(
+            frames_read=frame_count,
+            frames_skipped=skipped_count,
+            recoverable_errors=recoverable_error_count,
+            boundaries_found=len(intersection_areas),
+            mean_intersection_area=mean_area,
+        )
+
         log.info(
             "video_processed",
-            extra={
-                "event": "video_processed",
-                "frames_read": frame_count,
-                "frames_skipped": skipped_count,
-                "boundaries_found": len(detected_polygons),
-            },
+            extra={"event": "video_processed", **summary.model_dump()},
         )
-        return detected_polygons
+        return summary
