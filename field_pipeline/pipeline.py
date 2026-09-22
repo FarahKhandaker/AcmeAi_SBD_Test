@@ -4,12 +4,13 @@ import cv2
 import numpy as np
 from shapely.geometry import Polygon
 
+from field_pipeline.config import PipelineConfig
 
 class FieldBoundaryAnalyzer:
-    def __init__(self, config: dict):
+    def __init__(self, config: PipelineConfig):
         self.config = config
-        self.sport = config.get("field_detector", {}).get("sport", "soccer")
-        self.threshold = config.get("confidence_threshold", 0.5)
+        self.sport = config.field_detector.sport
+        self.min_area = config.field_detector.min_area
 
     def process_video(self, video_path: str):
         print(f"Starting processing for video: {video_path}")
@@ -55,7 +56,7 @@ class FieldBoundaryAnalyzer:
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if contours:
                 largest = max(contours, key=cv2.contourArea)
-                if cv2.contourArea(largest) > self.config.get("field_detector", {}).get("min_area", 500):
+                if cv2.contourArea(largest) > self.min_area:
                     pts = largest.reshape(-1, 2)
                     if len(pts) >= 3:
                         return Polygon(pts)
