@@ -89,3 +89,28 @@ def test_base_url_trailing_slash_normalised(progress):
 
     called_url = mock_post.call_args.args[0]
     assert called_url == "http://localhost:5000/api/v1/jobs/progress"
+    
+def test_retries_on_connection_error_then_succeeds(config, event):
+    """Connection errors are retried; a subsequent success returns True."""
+    with patch("field_pipeline.reporter.client.requests.post") as mock_post:
+        success_response = MagicMock()
+        success_response.raise_for_status = lambda: None
+        mock_post.side_effect = [
+            requests.ConnectionError("attempt 1"),
+            requests.ConnectionError("attempt 2"),
+            success_response,
+        ]
+        client = ReporterClient(config)
+        assert client.send_event(event) is True
+
+    assert mock_post.call_count == 3
+
+
+def test_gives_up_after_max_attempts(config, event):
+    """After max_attempts consecutive failures, send returns False."""
+    with patch("field_pipeline.reporter.client.requests.post") as mock_post:
+        mock_post.side_effect = requests.ConnectionError("always down")
+        client = ReporterClient(config)
+        assert client.send_event(event) is False
+
+    assert mock_post.call_count == config.max_attempts
